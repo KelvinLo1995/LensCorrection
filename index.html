@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iOS 風格圖片校正器</title>
+    <!-- 載入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 載入 Lucide Icons (用於 UI 圖示) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* 使用 Inter 字體 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        :root { font-family: 'Inter', sans-serif; }
+        
+        /* 自定義滑桿樣式以匹配 iOS 風格 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            height: 8px;
+            background: #e0e7ff; /* indigo-200 */
+            border-radius: 9999px;
+            outline: none;
+            transition: opacity .15s ease-in-out;
+        }
+
+        /* 滑桿手柄 (Thumb) */
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #4f46e5; /* indigo-600 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 4px solid #ffffff; /* 白色邊框 */
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #4f46e5;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 4px solid #ffffff;
+            box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+        }
+
+        /* 確保圖片在卡片內等比例縮放 */
+        .image-container {
+            aspect-ratio: 4 / 3;
+            width: 100%;
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-gray-100 flex flex-col items-center p-4">
+
+    <!-- 主應用程式卡片 -->
+    <div class="w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden p-6 space-y-6">
+
+        <!-- 標題欄 (App Header) -->
+        <div class="flex justify-center items-center py-2 border-b border-gray-200">
+            <h1 class="text-xl font-semibold text-gray-800 tracking-tight">
+                <span class="text-indigo-600">iOS</span> 風格畸變校正
+            </h1>
+        </div>
+
+        <!-- 1. 圖片上傳區 -->
+        <div class="space-y-4">
+            <label id="uploadLabel"
+                class="flex flex-col items-center justify-center p-8 border-4 border-dashed rounded-xl cursor-pointer transition duration-300 border-gray-300 hover:border-indigo-500 hover:bg-indigo-50"
+                onclick="document.getElementById('imageInput').click()">
+                <i data-lucide="upload" class="h-8 w-8 text-indigo-500"></i>
+                <p id="uploadText" class="mt-2 text-md font-medium text-indigo-600">點擊上傳圖片</p>
+            </label>
+            <input type="file" id="imageInput" accept="image/*" class="hidden" onchange="handleImageUpload(event)" />
+        </div>
+
+        <!-- 2. 處理區 (預設隱藏，有圖片後顯示) -->
+        <div id="processingArea" class="space-y-6 hidden">
+
+            <!-- 滑桿控制卡片 -->
+            <div class="bg-gray-50 p-4 rounded-xl shadow-inner">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-lg font-medium text-gray-700 flex items-center">
+                        <i data-lucide="sliders-horizontal" class="h-5 w-5 mr-2 text-indigo-500"></i>
+                        校正強度 (D)
+                    </h3>
+                    <span id="factorDisplay" class="font-extrabold text-2xl text-indigo-600">0.00</span>
+                </div>
+
+                <!-- 滑桿輸入 -->
+                <input type="range" id="sliderInput" min="0" max="100" value="0" step="1"
+                    oninput="updateFactorDisplay(this.value)" class="w-full h-2 bg-indigo-200 rounded-lg appearance-none cursor-pointer" />
+                <div class="flex justify-between text-xs text-gray-400 mt-1">
+                    <span>0.00 輕度</span>
+                    <span>1.00 極端</span>
+                </div>
+
+                <!-- 套用按鈕 -->
+                <button id="applyButton" onclick="handleApplyCorrection()"
+                    class="w-full mt-4 flex items-center justify-center py-3 rounded-xl font-bold transition duration-150 bg-indigo-500 hover:bg-indigo-600 text-white shadow-lg">
+                    套用校正並預覽
+                </button>
+            </div>
+
+            <!-- 圖像預覽區 -->
+            <div class="grid grid-cols-2 gap-3 text-center">
+
+                <!-- 原始圖片卡片 -->
+                <div class="image-card">
+                    <h4 class="text-sm font-semibold text-gray-600 mb-2">原始圖片</h4>
+                    <div class="image-container w-full bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
+                        <img id="originalPreview" src="" alt="原始圖片" class="w-full h-full object-contain" />
+                    </div>
+                </div>
+
+                <!-- 校正後圖片卡片 -->
+                <div class="image-card cursor-pointer hover:shadow-lg transition" onclick="handlePreview()">
+                    <h4 class="text-sm font-semibold text-gray-600 mb-2">校正後圖片 (點擊放大)</h4>
+                    <div class="image-container w-full bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
+                        <img id="correctedPreview" src="" alt="校正後圖片" class="w-full h-full object-contain hidden" />
+                        <div id="correctedPlaceholder" class="text-gray-400 text-sm p-4">請套用校正</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下載按鈕 -->
+            <button id="downloadButton" onclick="handleDownload()" disabled
+                class="w-full flex items-center justify-center py-3 rounded-xl font-bold transition duration-150 bg-gray-300 text-gray-500 cursor-not-allowed">
+                <i data-lucide="download" class="h-5 w-5 mr-2"></i>
+                下載校正結果 (PNG)
+            </button>
+        </div>
+
+        <!-- 離屏 Canvas 元素 (用於圖片處理) -->
+        <canvas id="sourceCanvas" class="hidden"></canvas>
+        <canvas id="correctedCanvas" class="hidden"></canvas>
+    </div>
+
+    <!-- 訊息框 (Toast/Alert) -->
+    <div id="messageBox"
+        class="fixed bottom-4 left-1/2 -translate-x-1/2 p-3 rounded-xl shadow-xl text-white z-50 opacity-0 transition-opacity duration-300 pointer-events-none">
+        <!-- 訊息內容將由 JS 注入 -->
+    </div>
+
+    <!-- 全屏預覽 Modal -->
+    <div id="previewModal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300"
+        onclick="closePreviewModal()">
+        <!-- Modal Content -->
+        <div class="bg-white rounded-xl max-w-full max-h-full overflow-hidden relative shadow-2xl"
+            onclick="event.stopPropagation()">
+            <button onclick="closePreviewModal()"
+                class="absolute top-4 right-4 p-2 bg-gray-900/40 hover:bg-gray-900/70 text-white rounded-full transition z-10">
+                <i data-lucide="x" class="h-6 w-6"></i>
+            </button>
+            <img id="modalImage" src="" alt="校正後預覽" class="object-contain" style="max-height: 90vh; max-width: 90vw;" />
+        </div>
+    </div>
+
+    <script>
+        // --- 全域變數 ---
+        let originalImage = null; // 儲存 Image 物件
+        let correctedImageUrl = null; // 儲存校正後的圖片 URL
+        let isLoading = false; // 載入狀態
+
+        // --- DOM 元素快取 ---
+        const $ = (id) => document.getElementById(id);
+
+        const DOM = {
+            imageInput: $('imageInput'),
+            uploadLabel: $('uploadLabel'),
+            uploadText: $('uploadText'),
+            processingArea: $('processingArea'),
+            sliderInput: $('sliderInput'),
+            factorDisplay: $('factorDisplay'),
+            applyButton: $('applyButton'),
+            originalPreview: $('originalPreview'),
+            correctedPreview: $('correctedPreview'),
+            correctedPlaceholder: $('correctedPlaceholder'),
+            downloadButton: $('downloadButton'),
+            sourceCanvas: $('sourceCanvas'),
+            correctedCanvas: $('correctedCanvas'),
+            messageBox: $('messageBox'),
+            previewModal: $('previewModal'),
+            modalImage: $('modalImage'),
+        };
+
+        // --- 訊息/Toast 處理 ---
+        /**
+         * 顯示自定義訊息（取代 alert/confirm）
+         * @param {string} msg 訊息內容
+         * @param {string} type 類型 (success, error, info)
+         */
+        const showMessage = (msg, type = 'info') => {
+            const bgClass = {
+                'success': 'bg-green-500',
+                'error': 'bg-red-500',
+                'info': 'bg-blue-500',
+            }[type] || 'bg-gray-700';
+
+            DOM.messageBox.textContent = msg;
+            DOM.messageBox.className = `fixed bottom-4 left-1/2 -translate-x-1/2 p-3 rounded-xl shadow-xl text-white z-50 transition-all duration-300 ${bgClass}`;
+            DOM.messageBox.style.opacity = '1';
+            DOM.messageBox.style.pointerEvents = 'auto';
+
+            setTimeout(() => {
+                DOM.messageBox.style.opacity = '0';
+                DOM.messageBox.style.pointerEvents = 'none';
+            }, 3000);
+        };
+
+        // --- 畸變校正核心算法 ---
+        /**
+         * 核心畸變校正邏輯 (Barrel Distortion Correction)
+         * @param {number} D 畸變校正係數 (0.00 - 1.00)
+         */
+        const correctDistortion = (D) => {
+            const srcCanvas = DOM.sourceCanvas;
+            const dstCanvas = DOM.correctedCanvas;
+
+            if (!srcCanvas || !dstCanvas || !originalImage) {
+                showMessage('Canvas 尚未準備好或未上傳圖片。', 'error');
+                return;
+            }
+
+            const srcCtx = srcCanvas.getContext('2d');
+            const dstCtx = dstCanvas.getContext('2d');
+
+            const width = originalImage.naturalWidth;
+            const height = originalImage.naturalHeight;
+
+            const srcData = srcCtx.getImageData(0, 0, width, height);
+            const dstData = dstCtx.createImageData(width, height);
+            const srcPixels = srcData.data;
+            const dstPixels = dstData.data;
+
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const maxDim = Math.min(width, height) / 2; // 用於正規化
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+
+                    // 1. 正規化座標 (-1.0 to 1.0)
+                    const xn = (x - centerX) / maxDim;
+                    const yn = (y - centerY) / maxDim;
+                    const r = Math.sqrt(xn * xn + yn * yn);
+
+                    // 2. 畸變校正因數 f = 1 + D * r^2
+                    // D > 0 執行桶形畸變校正 (讓中心放大)
+                    const f = 1.0 + D * r * r;
+
+                    // 3. 計算原始採樣點座標 (x_prime, y_prime)
+                    // 這是我們要從原始圖片中採樣的點
+                    const x_prime = centerX + xn * f * maxDim;
+                    const y_prime = centerY + yn * f * maxDim;
+
+                    const dstIdx = (y * width + x) * 4;
+
+                    // 4. 確保採樣點在原始圖片範圍內
+                    if (x_prime >= 0 && x_prime < width - 1 && y_prime >= 0 && y_prime < height - 1) {
+
+                        // 5. 雙線性插值 (Bilinear Interpolation)
+                        const x1 = Math.floor(x_prime);
+                        const y1 = Math.floor(y_prime);
+                        const fx = x_prime - x1;
+                        const fy = y_prime - y1;
+
+                        const getIndex = (x, y) => (y * width + x) * 4;
+
+                        const idx11 = getIndex(x1, y1);
+                        const idx21 = getIndex(x1 + 1, y1);
+                        const idx12 = getIndex(x1, y1 + 1);
+                        const idx22 = getIndex(x1 + 1, y1 + 1);
+
+                        // 執行插值
+                        for (let c = 0; c < 4; c++) { // R, G, B, A
+                            const C11 = srcPixels[idx11 + c];
+                            const C21 = srcPixels[idx21 + c];
+                            const C12 = srcPixels[idx12 + c];
+                            const C22 = srcPixels[idx22 + c];
+
+                            // 沿 x 軸插值
+                            const C_top = C11 * (1 - fx) + C21 * fx;
+                            const C_bottom = C12 * (1 - fx) + C22 * fx;
+
+                            // 沿 y 軸插值
+                            const colorValue = C_top * (1 - fy) + C_bottom * fy;
+
+                            // 寫入目的地像素
+                            dstPixels[dstIdx + c] = Math.round(colorValue);
+                        }
+                    } else {
+                        // 採樣點超出原始圖像範圍，設置為透明或黑色邊緣
+                        dstPixels[dstIdx] = dstPixels[dstIdx + 1] = dstPixels[dstIdx + 2] = 0; // Black
+                        dstPixels[dstIdx + 3] = 0; // Transparent
+                    }
+                }
+            }
+
+            // 將校正後的數據放回 Canvas
+            dstCtx.putImageData(dstData, 0, 0);
+
+            // 將結果 Canvas 轉換為圖片 URL
+            correctedImageUrl = dstCanvas.toDataURL('image/png');
+
+            // 更新 UI
+            DOM.correctedPreview.src = correctedImageUrl;
+            DOM.correctedPreview.classList.remove('hidden');
+            DOM.correctedPlaceholder.classList.add('hidden');
+            DOM.downloadButton.disabled = false;
+            DOM.downloadButton.className = 'w-full flex items-center justify-center py-3 rounded-xl font-bold transition duration-150 bg-green-500 hover:bg-green-600 text-white shadow-lg';
+        };
+
+        // --- 事件處理函數 ---
+
+        /** 更新滑桿顯示值 */
+        window.updateFactorDisplay = (value) => {
+            const factor = parseFloat(value) / 100;
+            DOM.factorDisplay.textContent = factor.toFixed(2);
+        };
+
+        /** 處理圖片上傳 */
+        window.handleImageUpload = (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            // 重置狀態
+            correctedImageUrl = null;
+            DOM.correctedPreview.src = '';
+            DOM.sliderInput.value = 0;
+            updateFactorDisplay(0);
+            DOM.correctedPreview.classList.add('hidden');
+            DOM.correctedPlaceholder.classList.remove('hidden');
+            DOM.processingArea.classList.remove('hidden');
+            DOM.downloadButton.disabled = true;
+            DOM.downloadButton.className = 'w-full flex items-center justify-center py-3 rounded-xl font-bold transition duration-150 bg-gray-300 text-gray-500 cursor-not-allowed';
+            
+            // 更新上傳區樣式
+            DOM.uploadLabel.classList.add('border-indigo-400', 'bg-indigo-50');
+            DOM.uploadLabel.classList.remove('border-gray-300', 'hover:border-indigo-500', 'hover:bg-indigo-50');
+            DOM.uploadText.textContent = '已上傳圖片 (點擊重新上傳)';
+
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    originalImage = img;
+
+                    // 1. 顯示在原始圖片預覽區
+                    DOM.originalPreview.src = e.target.result;
+
+                    // 2. 設置 Canvas 尺寸
+                    DOM.sourceCanvas.width = img.naturalWidth;
+                    DOM.sourceCanvas.height = img.naturalHeight;
+                    DOM.correctedCanvas.width = img.naturalWidth;
+                    DOM.correctedCanvas.height = img.naturalHeight;
+
+                    // 3. 繪製圖片到 Source Canvas (準備處理)
+                    const ctx = DOM.sourceCanvas.getContext('2d');
+                    ctx.drawImage(originalImage, 0, 0);
+
+                    showMessage('圖片上傳成功！請調整滑桿並套用校正。', 'success');
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        };
+
+        /** 觸發校正流程 */
+        window.handleApplyCorrection = () => {
+            if (isLoading || !originalImage) {
+                if (!originalImage) showMessage('請先上傳圖片！', 'error');
+                return;
+            }
+
+            isLoading = true;
+            const D = parseFloat(DOM.sliderInput.value) / 100;
+
+            // 更新按鈕為載入狀態
+            DOM.applyButton.disabled = true;
+            DOM.applyButton.innerHTML = `<i data-lucide="loader-2" class="h-5 w-5 mr-2 animate-spin"></i> 處理中...`;
+            DOM.applyButton.classList.remove('bg-indigo-500', 'hover:bg-indigo-600');
+            DOM.applyButton.classList.add('bg-indigo-300', 'cursor-not-allowed');
+            
+            // 延遲執行，讓 UI 有時間更新，避免阻塞
+            setTimeout(() => {
+                try {
+                    correctDistortion(D);
+                    showMessage(`校正完成！強度: ${D.toFixed(2)}`, 'success');
+                } catch (e) {
+                    console.error("Distortion Correction Error:", e);
+                    showMessage('校正過程中發生錯誤。', 'error');
+                } finally {
+                    isLoading = false;
+                    // 恢復按鈕狀態
+                    DOM.applyButton.disabled = false;
+                    DOM.applyButton.innerHTML = '套用校正並預覽';
+                    DOM.applyButton.classList.remove('bg-indigo-300', 'cursor-not-allowed');
+                    DOM.applyButton.classList.add('bg-indigo-500', 'hover:bg-indigo-600');
+                    // 重新渲染 Lucide 圖示
+                    lucide.createIcons();
+                }
+            }, 50);
+        };
+
+        /** 下載校正後的圖片 */
+        window.handleDownload = () => {
+            if (correctedImageUrl) {
+                const D = parseFloat(DOM.sliderInput.value) / 100;
+                const a = document.createElement('a');
+                a.href = correctedImageUrl;
+                a.download = `corrected_img_D${D.toFixed(2).replace('.', '_')}.png`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                showMessage('圖片已開始下載。', 'info');
+            } else {
+                showMessage('請先套用校正才能下載。', 'error');
+            }
+        };
+
+        /** 處理全屏預覽 */
+        window.handlePreview = () => {
+            if (correctedImageUrl) {
+                DOM.modalImage.src = correctedImageUrl;
+                DOM.previewModal.classList.remove('opacity-0', 'pointer-events-none');
+                DOM.previewModal.classList.add('opacity-100', 'pointer-events-auto');
+            } else {
+                showMessage('請先套用校正才能預覽。', 'info');
+            }
+        };
+
+        /** 關閉預覽 Modal */
+        window.closePreviewModal = () => {
+            DOM.previewModal.classList.add('opacity-0', 'pointer-events-none');
+            DOM.previewModal.classList.remove('opacity-100', 'pointer-events-auto');
+        };
+
+        // --- 初始化 ---
+        window.onload = () => {
+            // 初始化所有 Lucide 圖示
+            lucide.createIcons();
+        };
+
+    </script>
+</body>
+</html>
