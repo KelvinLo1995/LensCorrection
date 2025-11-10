@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>iOS 風格圖片校正器</title>
+    <title>iOS 風格圖片校正器 - test</title>
     <!-- 載入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 載入 Lucide Icons (用於 UI 圖示) -->
@@ -149,7 +149,7 @@
     <!-- 全屏預覽 Modal -->
     <div id="previewModal"
         class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-md opacity-0 pointer-events-none transition-opacity duration-300"
-        onclick="closePreviewModal()">
+        onclick="window.closePreviewModal()">
         <!-- Modal Content -->
         <div class="bg-white rounded-xl max-w-full max-h-full overflow-hidden relative shadow-2xl"
             onclick="event.stopPropagation()">
@@ -158,7 +158,7 @@
                 <h2 id="modalTitle" class="text-lg font-bold">預覽</h2>
             </div>
             
-            <button onclick="closePreviewModal()"
+            <button onclick="window.closePreviewModal()"
                 class="absolute top-4 right-4 p-2 bg-gray-900/40 hover:bg-gray-900/70 text-white rounded-full transition z-10">
                 <i data-lucide="x" class="h-6 w-6"></i>
             </button>
@@ -236,6 +236,24 @@
             DOM.previewModal.classList.add('opacity-0', 'pointer-events-none');
             DOM.previewModal.classList.remove('opacity-100', 'pointer-events-auto');
             DOM.modalHeader.classList.add('hidden');
+        };
+
+        /** 處理點擊原始圖片預覽 */
+        window.handleOriginalPreview = () => {
+            if (originalImageUrl) {
+                openPreviewModal('原始圖片預覽', originalImageUrl);
+            } else {
+                showMessage('請先上傳圖片才能預覽。', 'info');
+            }
+        }
+
+        /** 處理點擊校正後圖片預覽 */
+        window.handleCorrectedPreview = () => {
+            if (correctedImageUrl) {
+                openPreviewModal('校正後圖片預覽', correctedImageUrl);
+            } else {
+                showMessage('請先套用校正才能預覽。', 'info');
+            }
         };
 
         // --- 圖片處理 ---
@@ -358,7 +376,7 @@
             correctedImageUrl = null;
             DOM.correctedPreview.src = '';
             DOM.sliderInput.value = 0;
-            window.updateFactorDisplay(0); // <--- FIX: 確保調用全局的 updateFactorDisplay
+            window.updateFactorDisplay(0); 
             DOM.correctedPreview.classList.add('hidden');
             DOM.correctedPlaceholder.classList.remove('hidden');
             DOM.processingArea.classList.remove('hidden');
@@ -394,25 +412,6 @@
             reader.readAsDataURL(file);
         };
         
-        /** 處理點擊原始圖片預覽 */
-        window.handleOriginalPreview = () => {
-            if (originalImageUrl) {
-                openPreviewModal('原始圖片預覽', originalImageUrl);
-            } else {
-                showMessage('請先上傳圖片才能預覽。', 'info');
-            }
-        }
-
-        /** 處理點擊校正後圖片預覽 */
-        window.handleCorrectedPreview = () => {
-            if (correctedImageUrl) {
-                openPreviewModal('校正後圖片預覽', correctedImageUrl);
-            } else {
-                showMessage('請先套用校正才能預覽。', 'info');
-            }
-        };
-
-
         /** 觸發校正流程 */
         window.handleApplyCorrection = () => {
             if (isLoading || !originalImage) {
@@ -448,52 +447,61 @@
             }, 50);
         };
         
-        /** 下載/分享校正後的圖片 - Web Share API 優先 */
+        /** 標準下載回退 (Fallback Download) */
+        const fallbackDownload = (dataUrl, D) => {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            // 檔案名稱使用校正強度
+            a.download = `corrected_img_D${D.toFixed(2).replace('.', '_')}.png`; 
+
+            // 觸發點擊來啟動瀏覽器下載流程
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            showMessage('已觸發檔案儲存。如果未顯示提示，請檢查您的下載資料夾。', 'info');
+        };
+
+        /** 下載/分享校正後的圖片 - 優先使用 Web Share API，失敗則強制標準下載 */
         window.handleDownload = async () => {
             if (!correctedImageUrl) {
                 showMessage('請先套用校正才能下載/分享。', 'error');
                 return;
             }
 
-            // 1. 檢查 Web Share API 是否可用 (優先使用 Web Share API 觸發原生分享/儲存)
-            if (navigator.share && navigator.canShare && navigator.canShare({ files: [] })) {
-                
+            const D = parseFloat(DOM.sliderInput.value) / 100;
+            const filename = `corrected_img_${D.toFixed(2).replace('.', '_')}.png`;
+
+            // 1. PRIMARY: 嘗試 Web Share API (用於 iOS 原生分享/儲存介面)
+            if (navigator.share) {
                 try {
-                    // 2. 將 Data URL 轉換為 File/Blob
-                    const filename = `corrected_img_${(parseFloat(DOM.sliderInput.value) / 100).toFixed(2).replace('.', '_')}.png`;
+                    // 轉換為 File/Blob 才能分享
                     const imageFile = dataURLtoBlob(correctedImageUrl, filename);
 
-                    // 3. 觸發原生分享介面
                     await navigator.share({
                         files: [imageFile],
                         title: '校正後的圖片',
                         text: '這是我用畸變校正器處理的圖片。',
                     });
 
-                    showMessage('成功開啟原生分享介面！請在選項中選擇「儲存圖片」或「加入照片」。', 'success');
+                    showMessage('成功開啟原生分享介面！請在選項中選擇「儲存圖片」。', 'success');
+                    return; // 成功或使用者取消分享後停止
                     
                 } catch (error) {
-                    // 如果用戶取消分享 (AbortError)，或分享失敗
+                    // 如果 Web Share 失敗 (例如不支援檔案分享，或使用者取消 AbortError)
                     if (error.name !== 'AbortError') {
-                        console.error('Web Share API 錯誤:', error);
-                        showMessage('分享介面開啟失敗，請重試。', 'error');
+                        console.warn('Web Share API 失敗，退回標準下載:', error);
+                        // 失敗後，直接執行標準下載回退
                     } else {
                         showMessage('已取消分享。', 'info');
+                        return; // 如果是使用者取消，則不再執行回退下載
                     }
                 }
             } else {
-                // 4. Fallback：如果 Web Share API 不支援（例如：舊版瀏覽器或桌面環境）
-                showMessage('不支援原生分享。進行標準下載。', 'info');
-                
-                const D = parseFloat(DOM.sliderInput.value) / 100;
-                const a = document.createElement('a');
-                a.href = correctedImageUrl;
-                a.download = `corrected_img_D${D.toFixed(2).replace('.', '_')}.png`;
-
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
+                 console.warn('瀏覽器不支援 Web Share API，直接執行標準下載。');
             }
+
+            // 2. FALLBACK: 標準程式化下載 (用於 Web Share 失敗或不受支援時)
+            fallbackDownload(correctedImageUrl, D);
         };
 
 
