@@ -442,10 +442,23 @@
                 const a = document.createElement('a');
                 a.href = correctedImageUrl;
                 a.download = `corrected_img_D${D.toFixed(2).replace('.', '_')}.png`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                showMessage('圖片已開始下載。', 'info');
+
+                // --- 修正 iOS 下載問題 ---
+                // 檢查是否為 iOS 設備 (iPad, iPhone, iPod)
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+                if (isIOS) {
+                    // iOS Workaround: 必須在新標籤中打開圖片，讓用戶手動儲存
+                    window.open(correctedImageUrl, '_blank');
+                    showMessage('在 iOS 上，請在新開啟的視窗中長按圖片，然後選擇「儲存圖片」或「加入照片」。', 'info');
+                } else {
+                    // 標準瀏覽器下載
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    showMessage('圖片已開始下載。', 'info');
+                }
+                // --- 修正結束 ---
             } else {
                 showMessage('請先套用校正才能下載。', 'error');
             }
