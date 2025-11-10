@@ -109,16 +109,16 @@
             <!-- 圖像預覽區 -->
             <div class="grid grid-cols-2 gap-3 text-center">
 
-                <!-- 原始圖片卡片 -->
-                <div class="image-card">
-                    <h4 class="text-sm font-semibold text-gray-600 mb-2">原始圖片</h4>
+                <!-- 原始圖片卡片 - **現在可以點擊預覽** -->
+                <div class="image-card cursor-pointer hover:shadow-lg transition" onclick="handleOriginalPreview()">
+                    <h4 class="text-sm font-semibold text-gray-600 mb-2">原始圖片 (點擊放大)</h4>
                     <div class="image-container w-full bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
                         <img id="originalPreview" src="" alt="原始圖片" class="w-full h-full object-contain" />
                     </div>
                 </div>
 
                 <!-- 校正後圖片卡片 -->
-                <div class="image-card cursor-pointer hover:shadow-lg transition" onclick="handlePreview()">
+                <div class="image-card cursor-pointer hover:shadow-lg transition" onclick="handleCorrectedPreview()">
                     <h4 class="text-sm font-semibold text-gray-600 mb-2">校正後圖片 (點擊放大)</h4>
                     <div class="image-container w-full bg-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
                         <img id="correctedPreview" src="" alt="校正後圖片" class="w-full h-full object-contain hidden" />
@@ -153,17 +153,23 @@
         <!-- Modal Content -->
         <div class="bg-white rounded-xl max-w-full max-h-full overflow-hidden relative shadow-2xl"
             onclick="event.stopPropagation()">
+            <!-- 動態標題 -->
+            <div id="modalHeader" class="absolute top-0 left-0 right-0 p-3 text-center text-white bg-gray-900/40 z-10 hidden">
+                <h2 id="modalTitle" class="text-lg font-bold">預覽</h2>
+            </div>
+            
             <button onclick="closePreviewModal()"
                 class="absolute top-4 right-4 p-2 bg-gray-900/40 hover:bg-gray-900/70 text-white rounded-full transition z-10">
                 <i data-lucide="x" class="h-6 w-6"></i>
             </button>
-            <img id="modalImage" src="" alt="校正後預覽" class="object-contain" style="max-height: 90vh; max-width: 90vw;" />
+            <img id="modalImage" src="" alt="預覽圖片" class="object-contain" style="max-height: 90vh; max-width: 90vw;" />
         </div>
     </div>
 
     <script>
         // --- 全域變數 ---
         let originalImage = null; // 儲存 Image 物件
+        let originalImageUrl = null; // NEW: 儲存原始圖片的 URL
         let correctedImageUrl = null; // 儲存校正後的圖片 URL
         let isLoading = false; // 載入狀態
 
@@ -187,14 +193,11 @@
             messageBox: $('messageBox'),
             previewModal: $('previewModal'),
             modalImage: $('modalImage'),
+            modalTitle: $('modalTitle'),
+            modalHeader: $('modalHeader'),
         };
 
         // --- 訊息/Toast 處理 ---
-        /**
-         * 顯示自定義訊息（取代 alert/confirm）
-         * @param {string} msg 訊息內容
-         * @param {string} type 類型 (success, error, info)
-         */
         const showMessage = (msg, type = 'info') => {
             const bgClass = {
                 'success': 'bg-green-500',
@@ -212,12 +215,28 @@
                 DOM.messageBox.style.pointerEvents = 'none';
             }, 3000);
         };
+        
+        // --- Modal 處理 ---
 
-        // --- 畸變校正核心算法 ---
-        /**
-         * 核心畸變校正邏輯 (Barrel Distortion Correction)
-         * @param {number} D 畸變校正係數 (0.00 - 1.00)
-         */
+        /** 打開全屏預覽 Modal */
+        const openPreviewModal = (title, imageUrl) => {
+            if (!imageUrl) return;
+            DOM.modalTitle.textContent = title;
+            DOM.modalImage.src = imageUrl;
+            DOM.modalHeader.classList.remove('hidden');
+            
+            DOM.previewModal.classList.remove('opacity-0', 'pointer-events-none');
+            DOM.previewModal.classList.add('opacity-100', 'pointer-events-auto');
+        };
+
+        /** 關閉預覽 Modal */
+        window.closePreviewModal = () => {
+            DOM.previewModal.classList.add('opacity-0', 'pointer-events-none');
+            DOM.previewModal.classList.remove('opacity-100', 'pointer-events-auto');
+            DOM.modalHeader.classList.add('hidden');
+        };
+
+        // --- 畸變校正核心算法 (未變動) ---
         const correctDistortion = (D) => {
             const srcCanvas = DOM.sourceCanvas;
             const dstCanvas = DOM.correctedCanvas;
@@ -245,26 +264,18 @@
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
 
-                    // 1. 正規化座標 (-1.0 to 1.0)
                     const xn = (x - centerX) / maxDim;
                     const yn = (y - centerY) / maxDim;
                     const r = Math.sqrt(xn * xn + yn * yn);
-
-                    // 2. 畸變校正因數 f = 1 + D * r^2
-                    // D > 0 執行桶形畸變校正 (讓中心放大)
                     const f = 1.0 + D * r * r;
 
-                    // 3. 計算原始採樣點座標 (x_prime, y_prime)
-                    // 這是我們要從原始圖片中採樣的點
                     const x_prime = centerX + xn * f * maxDim;
                     const y_prime = centerY + yn * f * maxDim;
 
                     const dstIdx = (y * width + x) * 4;
 
-                    // 4. 確保採樣點在原始圖片範圍內
                     if (x_prime >= 0 && x_prime < width - 1 && y_prime >= 0 && y_prime < height - 1) {
 
-                        // 5. 雙線性插值 (Bilinear Interpolation)
                         const x1 = Math.floor(x_prime);
                         const y1 = Math.floor(y_prime);
                         const fx = x_prime - x1;
@@ -277,35 +288,27 @@
                         const idx12 = getIndex(x1, y1 + 1);
                         const idx22 = getIndex(x1 + 1, y1 + 1);
 
-                        // 執行插值
                         for (let c = 0; c < 4; c++) { // R, G, B, A
                             const C11 = srcPixels[idx11 + c];
                             const C21 = srcPixels[idx21 + c];
                             const C12 = srcPixels[idx12 + c];
                             const C22 = srcPixels[idx22 + c];
 
-                            // 沿 x 軸插值
                             const C_top = C11 * (1 - fx) + C21 * fx;
                             const C_bottom = C12 * (1 - fx) + C22 * fx;
 
-                            // 沿 y 軸插值
                             const colorValue = C_top * (1 - fy) + C_bottom * fy;
 
-                            // 寫入目的地像素
                             dstPixels[dstIdx + c] = Math.round(colorValue);
                         }
                     } else {
-                        // 採樣點超出原始圖像範圍，設置為透明或黑色邊緣
                         dstPixels[dstIdx] = dstPixels[dstIdx + 1] = dstPixels[dstIdx + 2] = 0; // Black
                         dstPixels[dstIdx + 3] = 0; // Transparent
                     }
                 }
             }
 
-            // 將校正後的數據放回 Canvas
             dstCtx.putImageData(dstData, 0, 0);
-
-            // 將結果 Canvas 轉換為圖片 URL
             correctedImageUrl = dstCanvas.toDataURL('image/png');
 
             // 更新 UI
@@ -330,6 +333,7 @@
             if (!file) return;
 
             // 重置狀態
+            originalImageUrl = null; // 重置原始圖片 URL
             correctedImageUrl = null;
             DOM.correctedPreview.src = '';
             DOM.sliderInput.value = 0;
@@ -351,9 +355,10 @@
                 const img = new Image();
                 img.onload = () => {
                     originalImage = img;
+                    originalImageUrl = e.target.result; // 儲存原始圖片的 URL
 
                     // 1. 顯示在原始圖片預覽區
-                    DOM.originalPreview.src = e.target.result;
+                    DOM.originalPreview.src = originalImageUrl;
 
                     // 2. 設置 Canvas 尺寸
                     DOM.sourceCanvas.width = img.naturalWidth;
@@ -366,11 +371,32 @@
                     ctx.drawImage(originalImage, 0, 0);
 
                     showMessage('圖片上傳成功！請調整滑桿並套用校正。', 'success');
+                    
+                    // ❗ 移除: 不再自動彈出預覽視窗
                 };
                 img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         };
+        
+        /** 處理點擊原始圖片預覽 */
+        window.handleOriginalPreview = () => {
+            if (originalImageUrl) {
+                openPreviewModal('原始圖片預覽', originalImageUrl);
+            } else {
+                showMessage('請先上傳圖片才能預覽。', 'info');
+            }
+        }
+
+        /** 處理點擊校正後圖片預覽 */
+        window.handleCorrectedPreview = () => {
+            if (correctedImageUrl) {
+                openPreviewModal('校正後圖片預覽', correctedImageUrl);
+            } else {
+                showMessage('請先套用校正才能預覽。', 'info');
+            }
+        };
+
 
         /** 觸發校正流程 */
         window.handleApplyCorrection = () => {
@@ -425,22 +451,6 @@
             }
         };
 
-        /** 處理全屏預覽 */
-        window.handlePreview = () => {
-            if (correctedImageUrl) {
-                DOM.modalImage.src = correctedImageUrl;
-                DOM.previewModal.classList.remove('opacity-0', 'pointer-events-none');
-                DOM.previewModal.classList.add('opacity-100', 'pointer-events-auto');
-            } else {
-                showMessage('請先套用校正才能預覽。', 'info');
-            }
-        };
-
-        /** 關閉預覽 Modal */
-        window.closePreviewModal = () => {
-            DOM.previewModal.classList.add('opacity-0', 'pointer-events-none');
-            DOM.previewModal.classList.remove('opacity-100', 'pointer-events-auto');
-        };
 
         // --- 初始化 ---
         window.onload = () => {
